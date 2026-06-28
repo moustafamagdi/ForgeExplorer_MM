@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
@@ -73,31 +73,38 @@ namespace ForgeExplorer.Models
         {
             IList<Item> items = new List<Item>();
 
-            // the API SDK
-            HubsApi hubsApi = new HubsApi();
-            hubsApi.Configuration.AccessToken = Credentials.TokenInternal;
-
-            var hubs = await hubsApi.GetHubsAsync();
-            foreach (KeyValuePair<string, dynamic> hubInfo in new DynamicDictionaryItems(hubs.data))
+            try
             {
-                // check the type of the hub to show an icon
-                string nodeType = "hubs";
-                switch ((string)hubInfo.Value.attributes.extension.type)
-                {
-                    case "hubs:autodesk.core:Hub":
-                        nodeType = "unsupported";
-                        break;
-                    case "hubs:autodesk.a360:PersonalHub":
-                        nodeType = "unsupported";
-                        break;
-                    case "hubs:autodesk.bim360:Account":
-                        nodeType = "bim360Hubs";
-                        break;
-                }
+                // the API SDK
+                HubsApi hubsApi = new HubsApi();
+                hubsApi.Configuration.AccessToken = Credentials.TokenInternal;
 
-                // create an item with the values
-                Item hubNode = new Item(hubInfo.Value.links.self.href, hubInfo.Value.attributes.name, nodeType, !(nodeType == "unsupported"));
-                items.Add(hubNode);
+                var hubs = await hubsApi.GetHubsAsync();
+                foreach (KeyValuePair<string, dynamic> hubInfo in new DynamicDictionaryItems(hubs.data))
+                {
+                    // check the type of the hub to show an icon
+                    string nodeType = "hubs";
+                    switch ((string)hubInfo.Value.attributes.extension.type)
+                    {
+                        case "hubs:autodesk.core:Hub":
+                            nodeType = "unsupported";
+                            break;
+                        case "hubs:autodesk.a360:PersonalHub":
+                            nodeType = "unsupported";
+                            break;
+                        case "hubs:autodesk.bim360:Account":
+                            nodeType = "bim360Hubs";
+                            break;
+                    }
+
+                    // create an item with the values
+                    Item hubNode = new Item(hubInfo.Value.links.self.href, hubInfo.Value.attributes.name, nodeType, !(nodeType == "unsupported"));
+                    items.Add(hubNode);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in GetHubsAsync: {ex.Message}");
             }
 
             return items;
@@ -107,32 +114,46 @@ namespace ForgeExplorer.Models
         {
             IList<Item> items = new List<Item>();
 
-            // the API SDK
-            ProjectsApi projectsApi = new ProjectsApi();
-            projectsApi.Configuration.AccessToken = Credentials.TokenInternal;
-
-            // extract the hubId from the href
-            string[] idParams = href.Split('/');
-            string hubId = idParams[idParams.Length - 1];
-
-            var projects = await projectsApi.GetHubProjectsAsync(hubId);
-            foreach (KeyValuePair<string, dynamic> projectInfo in new DynamicDictionaryItems(projects.data))
+            try
             {
-                // check the type of the project to show an icon
-                string nodeType = "projects";
-                switch ((string)projectInfo.Value.attributes.extension.type)
-                {
-                    case "projects:autodesk.core:Project":
-                        nodeType = "a360projects";
-                        break;
-                    case "projects:autodesk.bim360:Project":
-                        nodeType = "bim360projects";
-                        break;
-                }
+                // the API SDK
+                ProjectsApi projectsApi = new ProjectsApi();
+                projectsApi.Configuration.AccessToken = Credentials.TokenInternal;
 
-                // create a Item with the values
-                Item projectNode = new Item(projectInfo.Value.links.self.href, projectInfo.Value.attributes.name, nodeType, true);
-                items.Add(projectNode);
+                // extract the hubId from the href
+                string[] idParams = href.Split('/');
+                string hubId = idParams[idParams.Length - 1];
+
+                var projects = await projectsApi.GetHubProjectsAsync(hubId);
+                foreach (KeyValuePair<string, dynamic> projectInfo in new DynamicDictionaryItems(projects.data))
+                {
+                    // check the type of the project to show an icon
+                    string nodeType = "projects";
+                    string extensionType = (string)projectInfo.Value.attributes.extension.type;
+                    
+                    switch (extensionType)
+                    {
+                        case "projects:autodesk.core:Project":
+                            nodeType = "a360projects";
+                            break;
+                        case "projects:autodesk.bim360:Project":
+                            nodeType = "bim360projects";
+                            break;
+                        default:
+                            // Log unknown types for debugging
+                            Debug.WriteLine($"Unknown project type: {extensionType}");
+                            nodeType = "projects"; // Default to generic projects icon
+                            break;
+                    }
+
+                    // create a Item with the values
+                    Item projectNode = new Item(projectInfo.Value.links.self.href, projectInfo.Value.attributes.name, nodeType, true);
+                    items.Add(projectNode);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in GetProjectsAsync: {ex.Message}");
             }
 
             return items;
@@ -140,46 +161,61 @@ namespace ForgeExplorer.Models
 
         private async Task<IList<Item>> GetProjectContents(string href)
         {
-            // the API SDK
-            ProjectsApi projectApi = new ProjectsApi();
-            projectApi.Configuration.AccessToken = Credentials.TokenInternal;
+            try
+            {
+                // the API SDK
+                ProjectsApi projectApi = new ProjectsApi();
+                projectApi.Configuration.AccessToken = Credentials.TokenInternal;
 
-            // extract the hubId & projectId from the href
-            string[] idParams = href.Split('/');
-            string hubId = idParams[idParams.Length - 3];
-            string projectId = idParams[idParams.Length - 1];
+                // extract the hubId & projectId from the href
+                string[] idParams = href.Split('/');
+                string hubId = idParams[idParams.Length - 3];
+                string projectId = idParams[idParams.Length - 1];
 
-            var project = await projectApi.GetProjectAsync(hubId, projectId);
-            var rootFolderHref = project.data.relationships.rootFolder.meta.link.href;
+                var project = await projectApi.GetProjectAsync(hubId, projectId);
+                var rootFolderHref = project.data.relationships.rootFolder.meta.link.href;
 
-            return await GetFolderContents(rootFolderHref);
+                return await GetFolderContents(rootFolderHref);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in GetProjectContents: {ex.Message}");
+                return new List<Item>();
+            }
         }
 
         private async Task<IList<Item>> GetFolderContents(string href)
         {
             IList<Item> folderItems = new List<Item>();
 
-            // the API SDK
-            FoldersApi folderApi = new FoldersApi();
-            folderApi.Configuration.AccessToken = Credentials.TokenInternal;
-
-            // extract the projectId & folderId from the href
-            string[] idParams = href.Split('/');
-            string folderId = idParams[idParams.Length - 1];
-            string projectId = idParams[idParams.Length - 3];
-
-            var folderContents = await folderApi.GetFolderContentsAsync(projectId, folderId);
-            foreach (KeyValuePair<string, dynamic> folderContentItem in new DynamicDictionaryItems(folderContents.data))
+            try
             {
-                string displayName = folderContentItem.Value.attributes.displayName;
-                if (string.IsNullOrWhiteSpace(displayName))
+                // the API SDK
+                FoldersApi folderApi = new FoldersApi();
+                folderApi.Configuration.AccessToken = Credentials.TokenInternal;
+
+                // extract the projectId & folderId from the href
+                string[] idParams = href.Split('/');
+                string folderId = idParams[idParams.Length - 1];
+                string projectId = idParams[idParams.Length - 3];
+
+                var folderContents = await folderApi.GetFolderContentsAsync(projectId, folderId);
+                foreach (KeyValuePair<string, dynamic> folderContentItem in new DynamicDictionaryItems(folderContents.data))
                 {
-                    continue;
+                    string displayName = folderContentItem.Value.attributes.displayName;
+                    if (string.IsNullOrWhiteSpace(displayName))
+                    {
+                        continue;
+                    }
+
+                    Item itemNode = new Item(folderContentItem.Value.links.self.href, displayName, (string)folderContentItem.Value.type, true);
+
+                    folderItems.Add(itemNode);
                 }
-
-                Item itemNode = new Item(folderContentItem.Value.links.self.href, displayName, (string)folderContentItem.Value.type, true);
-
-                folderItems.Add(itemNode);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error in GetFolderContents: {ex.Message}");
             }
 
             return folderItems;

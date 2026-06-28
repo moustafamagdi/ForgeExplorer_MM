@@ -1,4 +1,4 @@
-﻿using ForgeExplorer.Models;
+using ForgeExplorer.Models;
 using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
@@ -56,9 +56,13 @@ namespace ForgeExplorer.ViewModels
 
             if (Children.Count == 0 && Content.Count == 0)
             {
-                var items = await _explorerViewModel?.dataManagementController?.GetItemAsync(Id);
+                var items = await _explorerViewModel.dataManagementController.GetItemAsync(Id);
+                if (items == null)
+                {
+                    return;
+                }
 
-                foreach(var item in items)
+                foreach (var item in items)
                 {
                     if(item.Type == "items")
                     {

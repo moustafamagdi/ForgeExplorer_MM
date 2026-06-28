@@ -1,5 +1,4 @@
 using Autodesk.Revit.UI;
-using ForgeExplorer.Core;
 using System;
 using System.Reflection;
 using System.Windows.Media.Imaging;
@@ -10,14 +9,11 @@ namespace ForgeExplorer
     {
         public Result OnShutdown(UIControlledApplication application)
         {
-            DiagnosticLogger.Write("OnShutdown called.");
             return Result.Succeeded;
         }
 
         public Result OnStartup(UIControlledApplication application)
         {
-            DiagnosticLogger.Initialize();
-            DiagnosticLogger.Write("OnStartup started.");
             RibbonPanel ribbonPanel = application.CreateRibbonPanel("Forge Explorer");
             string assembly = Assembly.GetExecutingAssembly().Location;
 
@@ -34,7 +30,6 @@ namespace ForgeExplorer
                 pushButton.ToolTip = "Explore Autodesk Docs, BIM 360, Fusion Team, and A360 Personal data from Revit 2024.";
             }
 
-            DiagnosticLogger.Write($"OnStartup completed. Log file: {DiagnosticLogger.CurrentLogPath}");
             return Result.Succeeded;
         }
     }

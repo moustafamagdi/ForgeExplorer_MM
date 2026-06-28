@@ -1,84 +1,92 @@
-using ForgeExplorer.Core;
-using Newtonsoft.Json.Linq;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Linq;
 using System.Threading.Tasks;
+using Autodesk.Forge;
+using Autodesk.Forge.Model;
 
 namespace ForgeExplorer.Models
 {
     public class DataManagementController
     {
-        private const string DataManagementBaseUrl = "https://developer.api.autodesk.com";
         private Credentials Credentials { get; set; }
 
         public async Task<string> GetUserProfileAsync()
         {
-            JObject user = await GetJsonAsync("/userprofile/v1/users/@me");
-            string name = user?["firstName"]?.ToString();
-            Debug.WriteLine(user?.ToString());
-            return name ?? string.Empty;
+            string name = string.Empty;
+
+            UserProfileApi userProfileApi = new UserProfileApi();
+            userProfileApi.Configuration.AccessToken = Credentials.TokenInternal;
+
+            try
+            {
+                dynamic user = await userProfileApi.GetUserProfileAsync();
+
+                name = user.ToString();
+                Debug.Write(name);
+            }
+            catch (Exception e)
+            {
+                Debug.Write(e);
+            }
+
+            return name;
         }
 
         public async Task<IList<Item>> GetItemAsync(string id)
         {
-            DiagnosticLogger.Write($"GetItemAsync requested id={id}");
-            if (!EnsureCredentials())
-            {
-                return null;
+            if (Credentials == null) {
+
+                Credentials = Credentials.GetFromAdWebServices();
+
+                if (Credentials == null)
+                {
+                    return null;
+                } 
             }
 
-            if (id == "#")
-            {
+            IList<Item> nodes = new List<Item>();
+
+            if (id == "#") // root
                 return await GetHubsAsync();
-            }
-
-            string[] idParams = id.Split('/');
-            if (idParams.Length < 2)
+            else
             {
-                return new List<Item>();
+                string[] idParams = id.Split('/');
+                string resource = idParams[idParams.Length - 2];
+                switch (resource)
+                {
+                    case "hubs": // hubs node selected/expanded, show projects
+                        return await GetProjectsAsync(id);
+                    case "projects": // projects node selected/expanded, show root folder contents
+                        return await GetProjectContents(id);
+                    case "folders": // folders node selected/expanded, show folder contents
+                        return await GetFolderContents(id);
+                    //case "items":
+                    //    return await GetItemVersions(id);
+                }
             }
 
-            string resource = idParams[idParams.Length - 2];
-            switch (resource)
-            {
-                case "hubs":
-                    return await GetProjectsAsync(id);
-                case "projects":
-                    return await GetProjectContents(id);
-                case "folders":
-                    return await GetFolderContents(id);
-                default:
-                    return new List<Item>();
-            }
-        }
-
-        private bool EnsureCredentials()
-        {
-            if (Credentials != null)
-            {
-                return true;
-            }
-
-            Credentials = Credentials.GetFromAdWebServices();
-            return Credentials != null;
+            return nodes;
         }
 
         private async Task<IList<Item>> GetHubsAsync()
         {
             IList<Item> items = new List<Item>();
-            DiagnosticLogger.Write("Loading hubs.");
-            JObject hubs = await GetJsonAsync("/project/v1/hubs");
 
-            foreach (JToken hub in hubs?["data"]?.Children() ?? Enumerable.Empty<JToken>())
+            // the API SDK
+            HubsApi hubsApi = new HubsApi();
+            hubsApi.Configuration.AccessToken = Credentials.TokenInternal;
+
+            var hubs = await hubsApi.GetHubsAsync();
+            foreach (KeyValuePair<string, dynamic> hubInfo in new DynamicDictionaryItems(hubs.data))
             {
+                // check the type of the hub to show an icon
                 string nodeType = "hubs";
-                switch (hub["attributes"]?["extension"]?["type"]?.ToString())
+                switch ((string)hubInfo.Value.attributes.extension.type)
                 {
                     case "hubs:autodesk.core:Hub":
+                        nodeType = "unsupported";
+                        break;
                     case "hubs:autodesk.a360:PersonalHub":
                         nodeType = "unsupported";
                         break;
@@ -87,29 +95,32 @@ namespace ForgeExplorer.Models
                         break;
                 }
 
-                string href = hub["links"]?["self"]?["href"]?.ToString();
-                string name = hub["attributes"]?["name"]?.ToString();
-                if (!string.IsNullOrWhiteSpace(href) && !string.IsNullOrWhiteSpace(name))
-                {
-                    items.Add(new Item(href, name, nodeType, nodeType != "unsupported"));
-                }
+                // create an item with the values
+                Item hubNode = new Item(hubInfo.Value.links.self.href, hubInfo.Value.attributes.name, nodeType, !(nodeType == "unsupported"));
+                items.Add(hubNode);
             }
 
-            DiagnosticLogger.Write($"Loaded {items.Count} hubs.");
             return items;
         }
 
         private async Task<IList<Item>> GetProjectsAsync(string href)
         {
             IList<Item> items = new List<Item>();
-            string hubId = GetLastPathSegment(href);
-            DiagnosticLogger.Write($"Loading projects for hubId={hubId}.");
-            JObject projects = await GetJsonAsync($"/project/v1/hubs/{EncodePathSegment(hubId)}/projects");
 
-            foreach (JToken project in projects?["data"]?.Children() ?? Enumerable.Empty<JToken>())
+            // the API SDK
+            ProjectsApi projectsApi = new ProjectsApi();
+            projectsApi.Configuration.AccessToken = Credentials.TokenInternal;
+
+            // extract the hubId from the href
+            string[] idParams = href.Split('/');
+            string hubId = idParams[idParams.Length - 1];
+
+            var projects = await projectsApi.GetHubProjectsAsync(hubId);
+            foreach (KeyValuePair<string, dynamic> projectInfo in new DynamicDictionaryItems(projects.data))
             {
+                // check the type of the project to show an icon
                 string nodeType = "projects";
-                switch (project["attributes"]?["extension"]?["type"]?.ToString())
+                switch ((string)projectInfo.Value.attributes.extension.type)
                 {
                     case "projects:autodesk.core:Project":
                         nodeType = "a360projects";
@@ -119,95 +130,59 @@ namespace ForgeExplorer.Models
                         break;
                 }
 
-                string projectHref = project["links"]?["self"]?["href"]?.ToString();
-                string name = project["attributes"]?["name"]?.ToString();
-                if (!string.IsNullOrWhiteSpace(projectHref) && !string.IsNullOrWhiteSpace(name))
-                {
-                    items.Add(new Item(projectHref, name, nodeType, true));
-                }
+                // create a Item with the values
+                Item projectNode = new Item(projectInfo.Value.links.self.href, projectInfo.Value.attributes.name, nodeType, true);
+                items.Add(projectNode);
             }
 
-            DiagnosticLogger.Write($"Loaded {items.Count} projects for hubId={hubId}.");
             return items;
         }
 
         private async Task<IList<Item>> GetProjectContents(string href)
         {
+            // the API SDK
+            ProjectsApi projectApi = new ProjectsApi();
+            projectApi.Configuration.AccessToken = Credentials.TokenInternal;
+
+            // extract the hubId & projectId from the href
             string[] idParams = href.Split('/');
             string hubId = idParams[idParams.Length - 3];
             string projectId = idParams[idParams.Length - 1];
-            DiagnosticLogger.Write($"Loading project contents for hubId={hubId}, projectId={projectId}.");
 
-            JObject project = await GetJsonAsync($"/project/v1/hubs/{EncodePathSegment(hubId)}/projects/{EncodePathSegment(projectId)}");
-            string rootFolderHref = project?["data"]?["relationships"]?["rootFolder"]?["meta"]?["link"]?["href"]?.ToString();
+            var project = await projectApi.GetProjectAsync(hubId, projectId);
+            var rootFolderHref = project.data.relationships.rootFolder.meta.link.href;
 
-            return string.IsNullOrWhiteSpace(rootFolderHref)
-                ? new List<Item>()
-                : await GetFolderContents(rootFolderHref);
+            return await GetFolderContents(rootFolderHref);
         }
 
         private async Task<IList<Item>> GetFolderContents(string href)
         {
             IList<Item> folderItems = new List<Item>();
+
+            // the API SDK
+            FoldersApi folderApi = new FoldersApi();
+            folderApi.Configuration.AccessToken = Credentials.TokenInternal;
+
+            // extract the projectId & folderId from the href
             string[] idParams = href.Split('/');
-            string projectId = idParams[idParams.Length - 3];
             string folderId = idParams[idParams.Length - 1];
-            DiagnosticLogger.Write($"Loading folder contents for projectId={projectId}, folderId={folderId}.");
+            string projectId = idParams[idParams.Length - 3];
 
-            JObject folderContents = await GetJsonAsync($"/data/v1/projects/{EncodePathSegment(projectId)}/folders/{EncodePathSegment(folderId)}/contents");
-            foreach (JToken folderContentItem in folderContents?["data"]?.Children() ?? Enumerable.Empty<JToken>())
+            var folderContents = await folderApi.GetFolderContentsAsync(projectId, folderId);
+            foreach (KeyValuePair<string, dynamic> folderContentItem in new DynamicDictionaryItems(folderContents.data))
             {
-                string displayName = folderContentItem["attributes"]?["displayName"]?.ToString();
-                string itemHref = folderContentItem["links"]?["self"]?["href"]?.ToString();
-                string itemType = folderContentItem["type"]?.ToString();
-
-                if (!string.IsNullOrWhiteSpace(displayName) && !string.IsNullOrWhiteSpace(itemHref) && !string.IsNullOrWhiteSpace(itemType))
+                string displayName = folderContentItem.Value.attributes.displayName;
+                if (string.IsNullOrWhiteSpace(displayName))
                 {
-                    folderItems.Add(new Item(itemHref, displayName, itemType, true));
+                    continue;
                 }
+
+                Item itemNode = new Item(folderContentItem.Value.links.self.href, displayName, (string)folderContentItem.Value.type, true);
+
+                folderItems.Add(itemNode);
             }
 
-            DiagnosticLogger.Write($"Loaded {folderItems.Count} folder content items for folderId={folderId}.");
             return folderItems;
-        }
-
-        private async Task<JObject> GetJsonAsync(string pathOrUrl)
-        {
-            string requestUri = pathOrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                ? pathOrUrl
-                : DataManagementBaseUrl + pathOrUrl;
-
-            using (HttpClient client = new HttpClient())
-            using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, requestUri))
-            {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Credentials.TokenInternal);
-                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.api+json"));
-                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-                DiagnosticLogger.Write($"GET {requestUri}");
-                HttpResponseMessage response = await client.SendAsync(request);
-                string responseBody = await response.Content.ReadAsStringAsync();
-
-                DiagnosticLogger.Write($"Response {(int)response.StatusCode} {response.ReasonPhrase} from {requestUri}");
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    throw new InvalidOperationException($"Autodesk Data Management request failed ({(int)response.StatusCode} {response.ReasonPhrase}): {responseBody}");
-                }
-
-                return JObject.Parse(responseBody);
-            }
-        }
-
-        private static string GetLastPathSegment(string href)
-        {
-            string[] idParams = href.Split('/');
-            return idParams[idParams.Length - 1];
-        }
-
-        private static string EncodePathSegment(string segment)
-        {
-            return Uri.EscapeDataString(Uri.UnescapeDataString(segment));
         }
     }
 }

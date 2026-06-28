@@ -36,8 +36,6 @@ namespace ForgeExplorer.Core
 
         public async void Execute(object parameter)
         {
-            DiagnosticLogger.Initialize();
-            DiagnosticLogger.Write($"Executing async command {GetType().FullName}.");
             IsExecuting = true;
             try
             {
@@ -45,12 +43,10 @@ namespace ForgeExplorer.Core
             }
             catch (Exception ex)
             {
-                DiagnosticLogger.WriteException(ex, $"Async command {GetType().FullName} failed");
                 _onException?.Invoke(ex);
             }
 
             IsExecuting = false;
-            DiagnosticLogger.Write($"Async command {GetType().FullName} finished.");
         }
 
         protected abstract Task ExecuteAsync(object parameter);

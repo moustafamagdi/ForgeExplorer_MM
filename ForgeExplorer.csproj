@@ -38,8 +38,10 @@
   <PropertyGroup><SignAssembly>false</SignAssembly></PropertyGroup>
   <PropertyGroup><AssemblyOriginatorKeyFile>ForgeExplorer.snk</AssemblyOriginatorKeyFile></PropertyGroup>
   <ItemGroup>
+    <Reference Include="Autodesk.Forge"><HintPath>..\packages\Autodesk.Forge.1.1.0\lib\45\Autodesk.Forge.dll</HintPath></Reference>
     <Reference Include="Microsoft.Xaml.Behaviors"><HintPath>..\packages\Microsoft.Xaml.Behaviors.Wpf.1.1.39\lib\net45\Microsoft.Xaml.Behaviors.dll</HintPath></Reference>
-    <Reference Include="Newtonsoft.Json"><HintPath>..\packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath></Reference>
+    <Reference Include="Newtonsoft.Json"><HintPath>..\packages\Newtonsoft.Json.9.0.1\lib\net45\Newtonsoft.Json.dll</HintPath></Reference>
+    <Reference Include="RestSharp"><HintPath>..\packages\RestSharp.105.2.3\lib\net46\RestSharp.dll</HintPath></Reference>
     <Reference Include="RevitAPI"><HintPath>$(ProgramW6432)\Autodesk\Revit 2024\RevitAPI.dll</HintPath><Private>False</Private></Reference>
     <Reference Include="RevitAPIUI"><HintPath>$(ProgramW6432)\Autodesk\Revit 2024\RevitAPIUI.dll</HintPath><Private>False</Private></Reference>
     <Reference Include="System" />
